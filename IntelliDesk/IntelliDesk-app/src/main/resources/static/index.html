@@ -1,0 +1,182 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IntelliDesk</title>
+<style>
+:root{--p:#4f46e5;--bg:#f8fafc;--t:#0f172a;--m:#64748b;--b:#e2e8f0}
+*{box-sizing:border-box}body{margin:0;font:15px Inter,system-ui,sans-serif;background:var(--bg);color:var(--t)}
+aside{position:fixed;inset:0 auto 0 0;width:210px;padding:20px 14px;background:#fff;border-right:1px solid var(--b)}
+aside a{display:block;padding:10px 12px;margin:4px 0;border-radius:10px;color:var(--m);cursor:pointer}aside a:hover{background:#eef2ff;color:var(--t)}
+main{margin-left:210px;padding:24px 32px;max-width:1100px}header{text-align:right;color:var(--m);margin-bottom:8px}h1{margin:.2em 0 .6em}
+.card{background:#fff;border:1px solid var(--b);border-radius:14px;padding:18px;margin-bottom:16px;box-shadow:0 4px 14px #0f172a0d}
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:16px}.stats{display:flex;gap:14px;flex-wrap:wrap}.stats .card{min-width:150px}.stats b{font-size:28px;display:block}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:14px}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--b)}tr[data-id]{cursor:pointer}tr[data-id]:hover{background:#f1f5f9}
+input,select,textarea{width:100%;padding:10px;margin:4px 0 12px;border:1px solid var(--b);border-radius:10px;font:inherit}input[type=checkbox]{width:auto}
+button{padding:10px 18px;border:0;border-radius:10px;background:linear-gradient(90deg,#4f46e5,#7c3aed);color:#fff;font-weight:600;cursor:pointer}button.ghost{background:#fff;color:var(--t);border:1px solid var(--b)}
+.pill{display:inline-block;padding:2px 10px;border-radius:99px;border:1px solid var(--b);font-size:12px;font-weight:600;background:#f8fafc}
+.IN_PROGRESS,.Medium{background:#eef2ff;color:#4338ca}.PENDING{background:#fff7ed;color:#c2410c}.RESOLVED{background:#ecfdf5;color:#047857}.High{background:#fef2f2;color:#b91c1c}
+.m{color:var(--m)}.err{color:#b91c1c;min-height:1.2em}.note{background:#f8fafc;border-radius:10px;padding:10px;margin:8px 0}
+.auth{min-height:100vh;display:grid;place-items:center;background:linear-gradient(135deg,#4338ca,#2563eb)}.auth .card{width:min(420px,92vw);padding:28px}
+</style></head><body><div id="app"></div><script>
+const $=s=>document.querySelector(s),app=$('#app');let me=null,cats=[],prios=[];
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=d=>d?new Date(d).toLocaleString():'',pill=s=>`<span class="pill ${esc(s)}">${esc(String(s).replace(/_/g,' '))}</span>`;
+const opts=a=>a.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');
+
+// Valid next-status transitions matching the server-side NEXT map
+const NEXT_STATUS = {OPEN:['IN_PROGRESS'], IN_PROGRESS:['PENDING'], PENDING:['IN_PROGRESS'], RESOLVED:[]};
+const STATUS_LABELS = {IN_PROGRESS:'In Progress', PENDING:'Pending'};
+
+async function api(p,m='GET',b){
+  const r=await fetch('/api'+p,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});
+  if(!r.ok){let e='';try{e=(await r.json()).message}catch{}throw new Error(e||r.statusText)}
+  const t=await r.text();return t?JSON.parse(t):null
+}
+const run=f=>async()=>{try{await f()}catch(e){alert(e.message)}};
+
+function login(){
+  app.innerHTML=`<div class="auth"><div class="card"><h1>Sign In</h1><p class="m">Enter your username to access IntelliDesk.</p>
+<label>Username<input id="e" placeholder="e.g. james.carter" autocomplete="username"></label>
+<label>Password<input id="pw" type="password" autocomplete="current-password"></label>
+<p class="err" id="err"></p><button id="go">Sign In</button>
+<p class="m" style="margin-top:14px;font-size:13px">Demo accounts (password: <b>password</b>)<br>
+Employee: james.carter · priya.nair · daniel.okonkwo · sofia.reyes<br>
+Technician: marcus.webb · aisha.thornton · leo.yamamoto<br>
+Admin: admin</p></div></div>`;
+  $('#go').onclick=async()=>{try{const r=await api('/auth/login','POST',{username:$('#e').value,password:$('#pw').value});r.verified?start():verify(r.message)}catch(e){$('#err').textContent=e.message}}
+}
+
+function verify(msg){
+  app.innerHTML=`<div class="auth"><div class="card"><h1>Two-Factor Authentication</h1><p class="m">Enter the 6-digit code sent to your company email.</p><div class="note">${esc(msg)}</div>
+<label>Verification Code<input id="c" maxlength="6" inputmode="numeric"></label><p class="err" id="err"></p><button id="go">Verify &amp; Continue</button> <button class="ghost" id="bk">Back to sign in</button></div></div>`;
+  $('#bk').onclick=login;
+  $('#go').onclick=async()=>{try{await api('/auth/verify','POST',{code:$('#c').value});start()}catch(e){$('#err').textContent=e.message}}
+}
+
+async function start(){
+  try{me=await api('/auth/me');[cats,prios]=await Promise.all([api('/categories'),api('/priorities')]);me.role==='ADMIN'?overview():tickets()}catch{login()}
+}
+
+function shell(title,html){
+  const nav=me.role==='EMPLOYEE'
+    ?[['My Tickets',()=>tickets()],['New Ticket',newTicket]]
+    :me.role==='TECHNICIAN'
+      ?[['All Tickets',()=>tickets()],['Assigned to Me',()=>tickets(true)]]
+      :[['Overview',overview],['Tickets',()=>tickets()],['Users',users]];
+  app.innerHTML=`<aside><h2>IntelliDesk</h2>${nav.map((n,i)=>`<a data-i="${i}">${n[0]}</a>`).join('')}<a id="out">Logout</a></aside><main><header><b>${esc(me.name)}</b> · ${me.role}</header><h1>${title}</h1>${html}</main>`;
+  app.querySelectorAll('aside a[data-i]').forEach(a=>a.onclick=()=>nav[+a.dataset.i][1]());
+  $('#out').onclick=async()=>{if(!confirm('Are you sure you want to log out?'))return;await api('/auth/logout','POST');me=null;login()}
+}
+
+async function overview(){
+  const d=await api('/reports/dashboard');
+  const c=(l,v)=>`<div class="card"><span class="m">${l}</span><b>${v}</b></div>`;
+  shell('Admin Dashboard',`<div class="stats">${c('Total Tickets',d.total)}${c('Open',d.open)}${c('In Progress',d.inProgress)}${c('Pending',d.pending)}${c('Resolved',d.resolved)}${c('Technicians',d.technicians)}${c('Employees',d.employees)}</div>`)
+}
+
+async function tickets(mine){
+  let t=await api('/tickets');
+  if(mine)t=t.filter(x=>x.assignee&&x.assignee.id===me.id);
+  shell(mine?'Assigned to Me':me.role==='EMPLOYEE'?'My Tickets':'Tickets',`<input id="q" placeholder="Search tickets..."><table id="tb"></table>`);
+  const draw=()=>{
+    const q=$('#q').value.toLowerCase();
+    $('#tb').innerHTML='<tr><th>#</th><th>Issue</th><th>Employee</th><th>Technician</th><th>Priority</th><th>Status</th></tr>'+
+      t.filter(x=>x.title.toLowerCase().includes(q)||String(x.id).includes(q))
+       .map(x=>`<tr data-id="${x.id}"><td>#${x.id}</td><td>${esc(x.title)}</td><td>${esc(x.submitter.name)}</td><td>${esc(x.assignee?.name||'Unassigned')}</td><td>${pill(x.priority.name)}</td><td>${pill(x.status)}</td></tr>`).join('');
+    $('#tb').querySelectorAll('tr[data-id]').forEach(r=>r.onclick=()=>detail(+r.dataset.id))
+  };
+  $('#q').oninput=draw;draw()
+}
+
+function newTicket(){
+  shell('Create Ticket',`<div class="card"><label>Title<input id="t"></label><label>Category<select id="c">${opts(cats)}</select></label><label>Priority<select id="p">${opts(prios)}</select></label>
+<label>Description<textarea id="d" rows="5"></textarea></label><p class="err" id="err"></p><button id="go">Submit Ticket</button></div>`);
+  $('#go').onclick=run(async()=>{
+    const title=$('#t').value.trim();
+    if(!title){$('#err').textContent='Title is required';return}
+    const t=await api('/tickets','POST',{title,description:$('#d').value,categoryId:+$('#c').value,priorityId:+$('#p').value});
+    detail(t.id)
+  })
+}
+
+async function detail(id){
+  const [t,cm,h]=await Promise.all([api('/tickets/'+id),api('/tickets/'+id+'/comments'),api('/tickets/'+id+'/history')]);
+  const staff=me.role!=='EMPLOYEE',open=t.status!=='RESOLVED',admin=me.role==='ADMIN';
+  const techs=admin?await api('/technicians'):[];
+
+  // Build the valid next-status options for this ticket's current status
+  const nextStatuses=(NEXT_STATUS[t.status]||[]).filter(s=>s!=='RESOLVED');
+  const statusOpts=nextStatuses.map(s=>`<option value="${s}">${STATUS_LABELS[s]||s}</option>`).join('');
+
+  shell(`#${t.id} — ${esc(t.title)}`,`<div class="grid">
+  <div class="card">
+    <p>${pill(t.status)} ${pill(t.priority.name)}</p>
+    <p class="m">${esc(t.category.name)} · Submitted by ${esc(t.submitter.name)} · Assigned to ${esc(t.assignee?.name||'Unassigned')} · SLA due ${fmt(t.dueAt)}</p>
+    <p>${esc(t.description)}</p>
+    ${t.resolutionNotes?`<p><b>Resolution:</b> ${esc(t.resolutionNotes)}</p>`:''}
+    ${t.escalationReason?`<p><b>Escalated:</b> ${esc(t.escalationReason)}</p>`:''}
+    <h3>Activity</h3>
+    ${cm.map(c=>`<div class="note"><b>${esc(c.author.name)}</b> · ${fmt(c.createdAt)}${c.visibility==='INTERNAL'?' · <em>internal</em>':''}<br>${esc(c.body)}</div>`).join('')||'<p class="m">No comments yet.</p>'}
+    <textarea id="cb" rows="3" placeholder="Add a comment..."></textarea>
+    ${staff?'<label><input type="checkbox" id="int"> Internal note (staff only)</label>':''}
+    <button id="post">Post Comment</button>
+  </div>
+  <div>
+    ${staff&&open?`<div class="card"><h3>Workflow</h3>
+      ${statusOpts
+        ?`<label>Move to<select id="st">${statusOpts}</select></label><button id="sv">Save Status</button><hr>`
+        :`<p class="m">No status transitions available from ${t.status.replace('_',' ')}.</p>`}
+      ${admin&&techs.length?`<label>Assign technician<select id="tc">${opts(techs)}</select></label><button id="as" class="ghost">Assign</button><hr>`:''}
+      <label>Resolution notes<textarea id="rn" rows="3" placeholder="Required to resolve..."></textarea></label>
+      <button id="rs">Resolve Ticket</button>
+      <button id="es" class="ghost" style="margin-top:8px">Escalate</button>
+    </div>`:''}
+    <div class="card"><h3>History</h3>
+      ${h.length?h.map(x=>`<p class="m">${fmt(x.changedAt)} · <b>${esc(x.changedBy.name)}</b>: ${esc(x.field)} ${x.oldValue?esc(x.oldValue)+'→':''} ${esc(x.newValue??'')}</p>`).join(''):'<p class="m">No history yet.</p>'}
+    </div>
+  </div></div>`);
+
+  const act=(b,f)=>{if($(b))$(b).onclick=run(async()=>{await f();detail(id)})};
+  act('#post',()=>api(`/tickets/${id}/comments`,'POST',{body:$('#cb').value,visibility:$('#int')?.checked?'INTERNAL':'PUBLIC'}));
+  act('#sv',()=>{
+    const st=$('#st');
+    if(!st||!st.value)throw new Error('Select a status first');
+    return api(`/tickets/${id}/status`,'POST',{status:st.value})
+  });
+  act('#as',()=>{
+    const tc=$('#tc');
+    if(!tc||!tc.value)throw new Error('Select a technician first');
+    return api(`/tickets/${id}/assign`,'POST',{technicianId:+tc.value})
+  });
+  act('#rs',()=>{
+    const rn=$('#rn');
+    if(!rn||!rn.value.trim())throw new Error('Resolution notes are required');
+    return api(`/tickets/${id}/resolve`,'POST',{notes:rn.value})
+  });
+  act('#es',()=>{
+    const reason=prompt('Reason for escalation?');
+    if(!reason||!reason.trim())throw new Error('A reason is required');
+    return api(`/tickets/${id}/escalate`,'POST',{reason:reason.trim()})
+  })
+}
+
+async function users(){
+  const [u,tc]=await Promise.all([api('/users'),api('/technicians')]);
+  shell('Users',`<div class="card"><h3>Add User</h3>
+<input id="n" placeholder="Full name"><input id="em" placeholder="Email address"><input id="pw" type="password" placeholder="Password (8+ chars)">
+<select id="ro"><option value="EMPLOYEE">Employee</option><option value="TECHNICIAN">Technician</option><option value="ADMIN">Administrator</option></select>
+<p class="err" id="aerr"></p><button id="add">Add User</button></div>
+<table><tr><th>Name</th><th>Email</th><th>Role</th><th>Load</th><th>Status</th><th></th></tr>
+${u.map(x=>{const l=tc.find(t=>t.id===x.id);return `<tr><td>${esc(x.name)}</td><td>${esc(x.email)}</td><td>${x.role}</td><td>${l?`${l.activeTickets} ticket${l.activeTickets!==1?'s':''} (${l.loadPercent??'–'}%)`:''}</td><td>${x.active?'Active':'<span class="m">Inactive</span>'}</td><td>${x.active&&x.id!==me.id?`<button class="ghost" data-d="${x.id}">Deactivate</button>`:''}</td></tr>`}).join('')}
+</table>`);
+  $('#add').onclick=run(async()=>{
+    const n=$('#n').value.trim(),em=$('#em').value.trim(),pw=$('#pw').value,ro=$('#ro').value;
+    if(!n||!em||!pw){$('#aerr').textContent='All fields are required';return}
+    await api('/users','POST',{name:n,email:em,password:pw,role:ro});
+    users()
+  });
+  app.querySelectorAll('[data-d]').forEach(b=>b.onclick=run(async()=>{
+    if(!confirm(`Deactivate this user?`))return;
+    await api(`/users/${b.dataset.d}/deactivate`,'POST');users()
+  }))
+}
+
+start();
+</script></body></html>
