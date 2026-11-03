@@ -192,9 +192,9 @@ Java services decide what each user may do. The database keeps every record link
 
 
 ## Team
-Rio, Keith|
-Patel, Meet|
-Cardell, Kendrick|
-Nepal, Shaswat|
-Jessie, Austin|
-Shottenkirk, Ashton|
+Rio Keith |
+Patel Meet |
+Cardell Kendrick |
+Nepal Shaswat |
+Jessie Austin |
+Shottenkirk Ashton |
