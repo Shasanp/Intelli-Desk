@@ -190,17 +190,11 @@ Every step checks permissions first. Notifications are created only when enabled
 
 Java services decide what each user may do. The database keeps every record linked and consistent.
 
-## Repository layout
-
-```
-.
-└── README.md
-```
 
 ## Team
-Rio, Keith
-Patel, Meet
-Cardell, Kendrick
-Nepal, Shaswat
-Jessie, Austin
-Shottenkirk, Ashton
+Rio, Keith|
+Patel, Meet|
+Cardell, Kendrick|
+Nepal, Shaswat|
+Jessie, Austin|
+Shottenkirk, Ashton|
