@@ -107,7 +107,19 @@ select.input{appearance:none;background-image:linear-gradient(45deg,transparent 
 .search .ic{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:13px}
 .kbd{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:999px;border:1px solid var(--line);background:#f8fafc;font-size:11px;color:var(--body);font-weight:500}
 .search .kbd{position:absolute;right:8px;top:50%;transform:translateY(-50%)}
-.who{display:flex;align-items:center;gap:12px;margin-left:auto}
+.who{display:flex;align-items:center;gap:12px}
+.bellwrap{position:relative;margin-left:auto}
+.bell{position:relative;width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--ink-2);display:grid;place-items:center;cursor:pointer}
+.bell:hover,.bell[aria-expanded="true"]{border-color:#a5b4fc;color:var(--brand)}
+.bell .badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#dc2626;color:#fff;font-size:10.5px;font-weight:700;display:grid;place-items:center;border:2px solid #fff}
+.npanel{position:absolute;right:0;top:46px;width:360px;max-width:calc(100vw - 32px);max-height:440px;overflow:auto;padding:0;z-index:6}
+.npanel .nh{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line-2);position:sticky;top:0;background:#fff}
+.npanel .nh b{font-size:14px}.npanel .link{background:none;border:0;color:var(--brand);font-size:12px;font-weight:600;cursor:pointer}
+.ni{display:flex;gap:10px;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line-2);padding:12px 16px;cursor:pointer;font:inherit;color:var(--body)}
+.ni:hover{background:#f8fafc}.ni .nm{display:block;font-size:13px;line-height:1.4}.ni small{display:block;font-size:11px;color:var(--muted);margin-top:3px}
+.ni .nd{width:8px;height:8px;border-radius:50%;margin-top:6px;flex:none;background:transparent}
+.bell .badge[hidden],.npanel[hidden]{display:none}
+.ni.unread{background:var(--brand-soft)}.ni.unread .nm{color:var(--ink);font-weight:600}.ni.unread .nd{background:var(--brand)}
 .avatar{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#eef2ff;font-size:10.5px;font-weight:700;color:var(--ink);flex:none}
 .who b{display:block;font-size:13px;font-weight:600}.who span{font-size:11px;color:var(--muted)}
 .main{margin-left:var(--side);padding:calc(var(--top) + 44px) 70px 60px 36px;min-height:100vh;position:relative;overflow:hidden}
@@ -192,6 +204,7 @@ table.t{width:100%;border-collapse:collapse}
 .bar .fill{position:absolute;left:0;right:0;bottom:0;border-radius:7px;background:#6366f1}
 .set{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line-2);font-size:13px;color:var(--body)}
 .set:first-of-type{border-top:0}.set small{display:block;font-size:11.5px;color:var(--muted)}
+.set select.setsel{width:auto;min-width:140px;height:36px;border-radius:10px;font-size:13px;padding:0 36px 0 12px;box-shadow:none;cursor:pointer;flex:none}
 .set .val{min-width:120px;height:36px;padding:0 12px;border:1px solid var(--field);border-radius:10px;display:flex;align-items:center;background:#fff;color:var(--ink-2)}
 .toggle{min-width:96px;justify-content:center;cursor:pointer}
 .callout{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 26px}
@@ -214,6 +227,7 @@ table.t{width:100%;border-collapse:collapse}
   .top{position:static;flex-wrap:wrap;height:auto;padding:12px 16px;gap:12px}.top .ws{min-width:0}.search{flex:1 1 100%;order:3;width:auto}
   .filters{flex-wrap:wrap}.filters input{flex:1 1 100%}
   .main{margin:0;padding:24px 16px}.faq,.kv{grid-template-columns:1fr 1fr}.t{display:block;overflow-x:auto}.ph{flex-direction:column}
+  .top{position:relative;left:auto;right:auto}.bellwrap{position:static}.npanel{left:16px;right:16px;top:calc(100% - 4px);width:auto;max-width:none}
 }
 
 .auth-qr{display:block;width:240px;height:240px;max-width:100%;object-fit:contain;margin:18px auto;background:white;border-radius:10px}
@@ -414,13 +428,40 @@ function shell(nav,html){
   <button class="logout" id="out">Logout</button></aside>
   <header class="top"><div class="ws">${R.ws}</div>
   <div class="search"><span class="ic">⌕</span><input id="gs" placeholder="${R.ph}" aria-label="Search tickets"><span class="kbd">⌘ K</span></div>
+  <div class="bellwrap"><button class="bell" id="bell" aria-label="Notifications" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span class="badge" id="bc" hidden></span></button>
+  <div class="card npanel" id="np" hidden><div class="nh"><b>Notifications</b><button class="link" id="nra">Mark all as read</button></div><div id="nl"></div></div></div>
   <div class="who"><div class="avatar">${esc(initials(me.name))}</div><div><b>${esc(me.name)}</b><span>${ROLE_LABEL[me.role]}</span></div></div></header>
   <main class="main"><div class="wrap">${html}</div></main>`;
   $$('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
+  bindBell();
   $('#gs').onkeydown=e=>{if(e.key==='Enter')go('tickets',{q:e.target.value.trim()})};
   $('#out').onclick=()=>{const m=modal('Log out?','<p class="muted" style="margin-bottom:20px">You will need to sign in again to use IntelliDesk.</p>','<button class="btn sm" id="lo">Log out</button>');
     m.q('#lo').onclick=async()=>{await api('/auth/logout','POST').catch(()=>{});m.close();login()}}
 }
+/* In-app notifications: the bell polls every 30 s while the page is visible. */
+let notifs={unread:0,items:[]},notifTimer=null;
+function renderBell(){
+  const bc=$('#bc'),nl=$('#nl');if(!bc)return;
+  bc.hidden=!notifs.unread;bc.textContent=notifs.unread>99?'99+':notifs.unread;
+  $('#bell').setAttribute('aria-label',notifs.unread?`Notifications, ${notifs.unread} unread`:'Notifications');
+  nl.innerHTML=notifs.items.length?notifs.items.map(n=>`<button class="ni ${n.read?'':'unread'}" data-n="${n.id}" data-tk="${n.ticketId??''}"><span class="nd"></span><span><span class="nm">${esc(n.message)}</span><small>${esc(fWhen(n.createdAt))}</small></span></button>`).join('')
+    :'<p class="empty" style="padding:22px 16px">You have no notifications yet.</p>';
+  $$('#nl [data-n]').forEach(b=>b.onclick=safe(async()=>{const n=notifs.items.find(x=>x.id===+b.dataset.n);
+    if(n&&!n.read){await api(`/notifications/${n.id}/read`,'POST');n.read=true;notifs.unread=Math.max(0,notifs.unread-1)}
+    closeBell();if(b.dataset.tk)go('ticket',{id:+b.dataset.tk,from:active});else renderBell()}));
+}
+async function loadNotifs(){if(!me||document.hidden)return;try{notifs=await api('/notifications');renderBell()}catch{}}
+function closeBell(){const p=$('#np');if(p){p.hidden=true;$('#bell').setAttribute('aria-expanded','false')}}
+function bindBell(){
+  renderBell();loadNotifs();
+  if(!notifTimer)notifTimer=setInterval(loadNotifs,30000);
+  $('#bell').onclick=e=>{e.stopPropagation();const p=$('#np'),open=p.hidden;p.hidden=!open;$('#bell').setAttribute('aria-expanded',open);if(open)loadNotifs()};
+  $('#np').onclick=e=>e.stopPropagation();
+  $('#nra').onclick=safe(async()=>{await api('/notifications/read-all','POST');notifs.items.forEach(n=>n.read=true);notifs.unread=0;renderBell()});
+}
+document.addEventListener('click',closeBell);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadNotifs()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeBell()});
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'&&$('#gs')){e.preventDefault();$('#gs').focus()}});
 const head=(t,p,acts='')=>`<div class="ph"><div><h1>${t}</h1><p>${p}</p></div>${acts?`<div class="acts">${acts}</div>`:''}</div>`;
 const stat=(l,v,note,dot)=>`<div class="card stat"><div class="l">${l}</div><div class="v">${v}</div>${note?`<div class="n">${dot!==undefined?`<span class="dot" style="background:${dot}"></span>`:''}${note}</div>`:''}</div>`;
@@ -739,22 +780,24 @@ async function techs(){
       <td style="text-align:right">${x.active?`<button class="btn danger sm" data-d="${x.id}">Deactivate</button>`:''}</td></tr>`}).join('')||'<tr><td colspan="6" class="empty">No technicians match.</td></tr>'}</tbody></table>`;
     $$('[data-d]').forEach(b=>b.onclick=()=>deactivate(list.find(x=>x.id===+b.dataset.d),techs))})
 }
-/* Settings are shown read-only: the server has no settings API yet, so these mirror application.properties and seeded data. */
-function settings(){
-  const tog=(on=true)=>`<span class="pill toggle ${on?'s-ok':'s-off'}" role="switch" aria-checked="${on}" tabindex="0">${on?'Enabled':'Disabled'}</span>`;
+/* Toggles load from and save to /api/settings; the other values mirror application.properties and seeded data. */
+async function settings(){
+  const cur=await api('/settings');
+  const tog=k=>{const on=cur[k]!==false;return `<span class="pill toggle ${on?'s-ok':'s-off'}" data-k="${k}" role="switch" aria-checked="${on}" tabindex="0">${on?'Enabled':'Disabled'}</span>`};
   const set=(l,v,s='')=>`<div class="set"><div>${l}${s?`<small>${s}</small>`:''}</div>${v}</div>`;
   shell('settings',head('Settings','Configure basic IntelliDesk system preferences.','<button class="btn" id="sv">Save Changes</button>')+
   `<div style="display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-bottom:22px">
   <div class="card pad" style="padding:14px 18px"><h2>Ticket Settings</h2><p class="sub" style="margin-bottom:6px">Default ticket configuration</p>
     ${set('Default Status','<span class="val">Open</span>')}${set('Priority Levels',`<span class="val">${prios.map(p=>esc(p.name)).join(', ')}</span>`)}${set('Ticket Categories',`<span class="val">${cats.map(c=>esc(c.name)).join(', ')}</span>`)}</div>
   <div class="card pad" style="padding:14px 18px"><h2>Authentication</h2><p class="sub" style="margin-bottom:6px">Sign-in and account security</p>
-    ${set('Two-Factor Authentication','<span class="val">Google Authenticator</span>')}${set('Session Timeout','<span class="val">30 minutes</span>')}${set('Role-Based Access',tog())}</div></div>
-  <div class="card pad" style="margin-bottom:22px;padding:18px 24px"><h2>Notifications</h2><p class="sub" style="margin-bottom:6px">Control basic email and ticket alerts</p>
-    ${set('Email Notifications',tog(),'Send email updates when ticket status changes.')}${set('Ticket Update Alerts',tog(),'Notify users when technicians add updates or resolve tickets.')}</div>
+    ${set('Two-Factor Authentication','<span class="val">Google Authenticator</span>')}${set('Session Timeout',`<select class="input setsel" id="sto" aria-label="Session timeout">${(cur.sessionTimeoutChoices||[15,30,60,120]).map(n=>`<option value="${n}" ${n===cur.sessionTimeoutMinutes?'selected':''}>${n<60?n+' minutes':n/60+(n===60?' hour':' hours')}</option>`).join('')}</select>`,'Applies from each user’s next sign-in.')}${set('Role-Based Access','<span class="val">Always on</span>')}</div></div>
+  <div class="card pad" style="margin-bottom:22px;padding:18px 24px"><h2>Notifications</h2><p class="sub" style="margin-bottom:6px">Control in-app ticket alerts</p>
+    ${set('Ticket Update Alerts',tog('ticketUpdateAlerts'),'Show in-app notifications when tickets are created, assigned, updated, commented on or resolved.')}</div>
   <div class="card callout"><div><h3>Changes apply to the entire IntelliDesk system.</h3><p>Review settings before saving to avoid disrupting employee or technician access.</p></div></div>`);
   $$('.toggle').forEach(x=>x.onclick=x.onkeydown=e=>{if(e.type==='keydown'&&e.key!==' '&&e.key!=='Enter')return;e.preventDefault();const on=x.getAttribute('aria-checked')!=='true';
     x.setAttribute('aria-checked',on);x.textContent=on?'Enabled':'Disabled';x.classList.toggle('s-ok',on);x.classList.toggle('s-off',!on)});
-  $('#sv').onclick=()=>toast('Settings can’t be saved yet: the server has no settings API. Values shown are the current defaults.')
+  $('#sv').onclick=safe(async()=>{const b=$('#sv'),body={};$$('.toggle[data-k]').forEach(x=>body[x.dataset.k]=x.getAttribute('aria-checked')==='true');body.sessionTimeoutMinutes=+$('#sto').value;
+    b.disabled=true;try{await api('/settings','PUT',body);toast('Settings saved.')}finally{b.disabled=false}})
 }
 
 start();

@@ -20,9 +20,11 @@ public class AuthController {
   record Verify(String code) {}
   private final UserRepo users; private final Auth auth;
   private final BCryptPasswordEncoder enc; private final AuthenticatorService authenticator;
+  private final SettingsController settings;
   @Value("${intellidesk.two-factor:true}") private boolean twoFactor;
-  public AuthController(UserRepo users, Auth auth, BCryptPasswordEncoder enc, AuthenticatorService authenticator) {
-    this.users = users; this.auth = auth; this.enc = enc; this.authenticator = authenticator;
+  public AuthController(UserRepo users, Auth auth, BCryptPasswordEncoder enc, AuthenticatorService authenticator,
+      SettingsController settings) {
+    this.users = users; this.auth = auth; this.enc = enc; this.authenticator = authenticator; this.settings = settings;
   }
   @ModelAttribute
   public void preventCaching(HttpServletResponse response) {
@@ -34,6 +36,7 @@ public class AuthController {
   }
   private void signIn(User user, HttpSession session, HttpServletRequest request) {
     clearPending(session); request.changeSessionId(); session.setAttribute(Auth.KEY, user.id);
+    session.setMaxInactiveInterval(settings.sessionTimeoutMinutes() * 60); // admin Session Timeout setting
   }
   private User pendingUser(HttpSession session) {
     Long id = (Long) session.getAttribute("pendingUid");

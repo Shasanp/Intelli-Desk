@@ -25,9 +25,13 @@ public class TicketService {
       OPEN, Set.of(IN_PROGRESS), IN_PROGRESS, Set.of(PENDING), PENDING, Set.of(IN_PROGRESS), RESOLVED, Set.of());
   private final TicketRepo tickets; private final CommentRepo comments; private final HistoryRepo history;
   private final CategoryRepo cats; private final PriorityRepo prios; private final UserRepo users;
-  public TicketService(TicketRepo t, CommentRepo c, HistoryRepo h, CategoryRepo ca, PriorityRepo p, UserRepo u) {
-    tickets = t; comments = c; history = h; cats = ca; prios = p; users = u;
+  private final NotificationService notes;
+  public TicketService(TicketRepo t, CommentRepo c, HistoryRepo h, CategoryRepo ca, PriorityRepo p, UserRepo u, NotificationService n) {
+    tickets = t; comments = c; history = h; cats = ca; prios = p; users = u; notes = n;
   }
+  private static String ref(Ticket t) { return "#" + t.id + " “" + t.title + "”"; }
+  /** Staff who should hear about a ticket: its technician, or every admin while it is unassigned. */
+  private List<User> staffFor(Ticket t) { return t.assignee != null ? List.of(t.assignee) : notes.admins(); }
   /** Priority given to every new ticket. Employees cannot choose it; staff adjust it after triage. */
   static final String DEFAULT_PRIORITY = "Medium";
   private static ResponseStatusException err(HttpStatus s, String m) { return new ResponseStatusException(s, m); }
@@ -46,7 +50,9 @@ public class TicketService {
     t.priority = prios.findByNameIgnoreCase(DEFAULT_PRIORITY).or(prios::findFirstByOrderByRankAsc)
         .orElseThrow(() -> err(HttpStatus.INTERNAL_SERVER_ERROR, "No priority levels are configured"));
     t.createdAt = Instant.now(); t.dueAt = t.createdAt.plus(t.priority.resolutionHours, ChronoUnit.HOURS);
-    tickets.save(t); log(t, u, "status", null, OPEN); return t;
+    tickets.save(t); log(t, u, "status", null, OPEN);
+    notes.notifyAll(notes.admins(), u, t, "New ticket " + ref(t) + " from " + u.name);
+    return t;
   }
   public List<Ticket> list(User u) {
     return u.role == Role.EMPLOYEE ? tickets.findBySubmitterOrderByCreatedAtDesc(u) : tickets.findAllByOrderByCreatedAtDesc();
@@ -69,7 +75,10 @@ public class TicketService {
     if (t.status == RESOLVED) throw err(HttpStatus.BAD_REQUEST, "Resolved tickets are final");
     User tech = users.findById(techId == null ? -1L : techId).orElseThrow(() -> err(HttpStatus.BAD_REQUEST, "Unknown technician"));
     if (tech.role != Role.TECHNICIAN || !tech.active) throw err(HttpStatus.BAD_REQUEST, "Must be an active technician");
-    log(t, admin, "assignee", t.assignee == null ? null : t.assignee.name, tech.name); t.assignee = tech; return t;
+    log(t, admin, "assignee", t.assignee == null ? null : t.assignee.name, tech.name); t.assignee = tech;
+    notes.notify(tech, admin, t, "Ticket " + ref(t) + " was assigned to you");
+    notes.notify(t.submitter, admin, t, tech.name + " is now handling your ticket " + ref(t));
+    return t;
   }
   /** SLA deadline = created + priority hours + time spent waiting on the employee. */
   private static Instant deadline(Ticket t) {
@@ -103,7 +112,10 @@ public class TicketService {
       t.pausedAt = Instant.now();
     }
     if (t.status == PENDING) resumeSla(t, u);
-    log(t, u, "status", t.status, to); t.status = to; return t;
+    log(t, u, "status", t.status, to); t.status = to;
+    notes.notify(t.submitter, u, t, to == PENDING ? u.name + " needs more information on your ticket " + ref(t)
+        : "Your ticket " + ref(t) + " is now In Progress");
+    return t;
   }
   /** Assigned technician or admin re-prioritizes a ticket; the SLA deadline is recalculated from the creation time. */
   public Ticket changePriority(User u, Long id, Long prioId) {
@@ -118,12 +130,16 @@ public class TicketService {
     if (t.assignee == null) throw err(HttpStatus.BAD_REQUEST, "Assign a technician first");
     if (blank(notes)) throw err(HttpStatus.BAD_REQUEST, "Resolution notes are required");
     resumeSla(t, u);
-    log(t, u, "status", t.status, RESOLVED); t.status = RESOLVED; t.resolvedAt = Instant.now(); t.resolutionNotes = notes.trim(); return t;
+    log(t, u, "status", t.status, RESOLVED); t.status = RESOLVED; t.resolvedAt = Instant.now(); t.resolutionNotes = notes.trim();
+    this.notes.notify(t.submitter, u, t, "Your ticket " + ref(t) + " was resolved");
+    return t;
   }
   public Ticket escalate(User u, Long id, String reason) {
     Ticket t = workable(u, id);
     if (blank(reason)) throw err(HttpStatus.BAD_REQUEST, "A reason is required");
-    t.escalatedBy = u; t.escalationReason = reason.trim(); log(t, u, "escalated", null, reason.trim()); return t;
+    t.escalatedBy = u; t.escalationReason = reason.trim(); log(t, u, "escalated", null, reason.trim());
+    notes.notifyAll(notes.admins(), u, t, u.name + " escalated ticket " + ref(t));
+    return t;
   }
   public Comment addComment(User u, Long id, String body, CommentVisibility vis) {
     Ticket t = get(u, id);
@@ -134,6 +150,9 @@ public class TicketService {
     if (u.role == Role.EMPLOYEE && t.status == PENDING) { // the employee answered: back to work, clock running
       resumeSla(t, u); log(t, u, "status", PENDING, IN_PROGRESS); t.status = IN_PROGRESS;
     }
+    if (u.role == Role.EMPLOYEE) notes.notifyAll(staffFor(t), u, t, u.name + " replied on ticket " + ref(t));
+    else if (c.visibility == CommentVisibility.PUBLIC) notes.notify(t.submitter, u, t, u.name + " commented on your ticket " + ref(t));
+    else notes.notifyAll(staffFor(t), u, t, u.name + " added an internal note on ticket " + ref(t));
     return c;
   }
   @Transactional(readOnly = true)
